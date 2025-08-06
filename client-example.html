@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Client Example</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .auth-form {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+
+        .auth-form input {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+
+        .auth-form button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .auth-form button:hover {
+            background: #0056b3;
+        }
+
+        .chat-container {
+            display: none;
+        }
+
+        .messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #fafafa;
+            border-radius: 5px;
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .message .user {
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .message .time {
+            font-size: 0.8em;
+            color: #666;
+        }
+
+        .message-input {
+            display: flex;
+            gap: 10px;
+        }
+
+        .message-input input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .message-input button {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .message-input button:hover {
+            background: #218838;
+        }
+
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .connected-users {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+
+        .connected-users h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+
+        .typing-indicator {
+            font-style: italic;
+            color: #6c757d;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Chat Application - Test Client</h1>
+
+        <div id="auth-section">
+            <div class="auth-form">
+                <h3>Login</h3>
+                <input type="email" id="loginEmail" placeholder="Email">
+                <input type="password" id="loginPassword" placeholder="Password">
+                <button onclick="login()">Login</button>
+
+                <a href="http://localhost:3001/auth/google">
+                    <button>Iniciar sesión con Google</button>
+                </a>
+
+
+            </div>
+
+            <div class="auth-form">
+                <h3>Register</h3>
+                <input type="email" id="registerEmail" placeholder="Email">
+                <input type="password" id="registerPassword" placeholder="Password">
+                <button onclick="register()">Register</button>
+            </div>
+        </div>
+
+        <div id="status"></div>
+
+        <div id="chat-section" class="chat-container">
+            <button onclick="logout()">Cerrar sesión</button>
+
+            <div id="messages" class="messages"></div>
+            <div id="typing-indicator" class="typing-indicator"></div>
+            <div class="message-input">
+                <input type="text" id="messageInput" placeholder="Escribe tu mensaje..."
+                    onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">Enviar</button>
+            </div>
+            <div class="connected-users">
+                <h3>Usuarios Conectados</h3>
+                <div id="connectedUsers"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket;
+        let currentUser = null;
+        let typingTimer;
+
+        const API_URL = 'http://localhost:3001';
+
+        function showStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+            setTimeout(() => statusDiv.innerHTML = '', 5000);
+        }
+
+        async function makeRequest(endpoint, method = 'GET', data = null) {
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            };
+
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+
+            const response = await fetch(`${API_URL}${endpoint}`, options);
+            return await response.json();
+        }
+
+        async function login() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            if (!email || !password) {
+                showStatus('Por favor ingresa email y password', 'error');
+                return;
+            }
+
+            try {
+                const response = await makeRequest('/api/auth/login', 'POST', { email, password });
+
+                if (response.success) {
+                    currentUser = response.data.user;
+                    localStorage.setItem('token', response.data.token);
+                    showStatus('Login exitoso', 'success');
+                    showChatSection();
+                    connectToChat(response.data.token);
+                } else {
+                    showStatus(response.error, 'error');
+                }
+            } catch (error) {
+                showStatus('Error en el login', 'error');
+                console.error('Error:', error);
+            }
+        }
+
+        async function register() {
+            const email = document.getElementById('registerEmail').value;
+            const password = document.getElementById('registerPassword').value;
+
+            if (!email || !password) {
+                showStatus('Por favor ingresa email y password', 'error');
+                return;
+            }
+
+            try {
+                const response = await makeRequest('/api/auth/register', 'POST', { email, password });
+
+                if (response.success) {
+                    currentUser = response.data.user;
+                    localStorage.setItem('token', response.data.token);
+                    showStatus('Registro exitoso', 'success');
+                    showChatSection();
+                    connectToChat(response.data.token);
+                } else {
+                    showStatus(response.error, 'error');
+                }
+            } catch (error) {
+                showStatus('Error en el registro', 'error');
+                console.error('Error:', error);
+            }
+        }
+
+        function showChatSection() {
+            document.getElementById('auth-section').style.display = 'none';
+            document.getElementById('chat-section').style.display = 'block';
+        }
+
+        function connectToChat(token) {
+            socket = io(API_URL, {
+                auth: {
+                    token: token
+                }
+            });
+
+            socket.on('connect', () => {
+                console.log('Conectado al chat');
+                showStatus('Conectado al chat', 'success');
+            });
+
+            socket.on('recentMessages', (messages) => {
+                const messagesDiv = document.getElementById('messages');
+                messagesDiv.innerHTML = '';
+                messages.reverse().forEach(message => {
+                    displayMessage(message);
+                });
+            });
+
+            socket.on('newMessage', (message) => {
+                displayMessage(message);
+            });
+
+            socket.on('userConnected', (user) => {
+                showStatus(`${user.email} se conectó`, 'success');
+            });
+
+            socket.on('userDisconnected', (user) => {
+                showStatus(`${user.email} se desconectó`, 'error');
+            });
+
+            socket.on('connectedUsers', (users) => {
+                displayConnectedUsers(users);
+            });
+
+            socket.on('userTyping', (data) => {
+                const typingDiv = document.getElementById('typing-indicator');
+                if (data.isTyping) {
+                    typingDiv.textContent = `${data.email} está escribiendo...`;
+                } else {
+                    typingDiv.textContent = '';
+                }
+            });
+
+            socket.on('error', (error) => {
+                showStatus(`Error: ${error.message}`, 'error');
+            });
+
+            socket.on('disconnect', () => {
+                showStatus('Desconectado del chat', 'error');
+            });
+        }
+
+        function displayMessage(message) {
+            const messagesDiv = document.getElementById('messages');
+            const messageElement = document.createElement('div');
+            messageElement.className = 'message';
+
+            const time = new Date(message.createdAt).toLocaleTimeString();
+            messageElement.innerHTML = `
+                <div class="user">${message.user.email}</div>
+                <div>${message.text}</div>
+                <div class="time">${time}</div>
+            `;
+
+            messagesDiv.appendChild(messageElement);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function displayConnectedUsers(users) {
+            const connectedUsersDiv = document.getElementById('connectedUsers');
+            connectedUsersDiv.innerHTML = users.map(user => `
+                <div>${user.email}</div>
+            `).join('');
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const text = messageInput.value.trim();
+
+            if (!text) return;
+
+            socket.emit('sendMessage', { text });
+            messageInput.value = '';
+
+            // Detener indicador de escritura
+            socket.emit('typing', { isTyping: false });
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            } else {
+                // Indicador de escritura
+                socket.emit('typing', { isTyping: true });
+
+                clearTimeout(typingTimer);
+                typingTimer = setTimeout(() => {
+                    socket.emit('typing', { isTyping: false });
+                }, 1000);
+            }
+        }
+
+        // Verificar si ya hay un token guardado
+        window.onload = function () {
+            const token = localStorage.getItem('token');
+            if (token) {
+                showChatSection();
+                connectToChat(token);
+            }
+        };
+
+        function logout() {
+            localStorage.removeItem('token');
+            currentUser = null;
+            socket.disconnect();
+            document.getElementById('chat-section').style.display = 'none';
+            document.getElementById('auth-section').style.display = 'block';
+            showStatus('Sesión cerrada', 'success');
+        }
+
+    </script>
+</body>
+
+</html>

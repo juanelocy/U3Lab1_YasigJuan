@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Procesando autenticación...</title>
+</head>
+<body>
+  <h2>Procesando autenticación con Google...</h2>
+
+  <script>
+    // Leer el token de la URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    if (token) {
+      // Guardar el token en localStorage
+      localStorage.setItem('token', token);
+
+      // Redirigir al index.html (puedes cambiar a otro destino si lo prefieres)
+      window.location.href = 'client-example.html';
+    } else {
+      document.body.innerHTML = '<h2>Error: No se recibió el token</h2>';
+    }
+  </script>
+</body>
+</html>
