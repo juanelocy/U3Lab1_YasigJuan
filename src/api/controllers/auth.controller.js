@@ -1,5 +1,6 @@
 const registerUserUseCase = require("../../domain/use-cases/register-user.use-case");
 const loginUserUseCase = require("../../domain/use-cases/login-user.use-case");
+const jwt = require("jsonwebtoken");
 
 class AuthController {
   async register(req, res) {
@@ -89,6 +90,30 @@ class AuthController {
         success: false,
         error: "Error interno del servidor",
       });
+    }
+  }
+
+  async googleCallback(req, res) {
+    try {
+      const user = req.user;
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          error: "Usuario no autenticado con Google",
+        });
+      }
+
+      const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRES_IN,
+      });
+
+      // ✅ Redirigir correctamente al frontend
+      const clientURL = process.env.CLIENT_URL || "http://127.0.0.1:5500";
+      res.redirect(`${clientURL}/client-example.html?token=${token}`);
+    } catch (err) {
+      console.error("Error en googleCallback:", err);
+      res.status(500).json({ success: false, error: "Error en Google login" });
     }
   }
 }

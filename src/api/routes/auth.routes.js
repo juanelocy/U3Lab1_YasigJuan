@@ -1,6 +1,5 @@
 const express = require("express");
-const router = express.Router(); // Mover esta línea aquí ARRIBA
-
+const passport = require("passport");
 const authController = require("../controllers/auth.controller");
 const {
   validate,
@@ -10,23 +9,7 @@ const {
   authMiddleware,
 } = require("../../infrastructure/middlewares/auth.middleware");
 
-const passport = require('passport');
-
-// Ruta para iniciar el proceso de autenticación con Google
-router.get('/google', passport.authenticate('google', {
-  scope: ['profile', 'email']
-}));
-
-// Ruta de callback a la que Google redirige tras la autorización
-router.get('/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/login-error' }),
-  (req, res) => {
-    const mockToken =
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEyMzQ1IiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
-
-    res.redirect(`http://localhost:3001/auth/callback?token=${mockToken}`);
-  }
-);
+const router = express.Router();
 
 // Rutas públicas
 router.post(
@@ -39,6 +22,24 @@ router.post("/login", validate(authSchemas.login), authController.login);
 // Rutas protegidas
 router.get("/profile", authMiddleware, authController.getProfile);
 
+// Ruta para iniciar login con Google
+router.get(
+  "/google",
+  passport.authenticate("google", { scope: ["profile", "email"] })
+);
 
+// Ruta de callback
+router.get(
+  "/google/callback",
+  passport.authenticate("google", {
+    failureRedirect: "/auth/login-failed",
+    session: false,
+  }),
+  authController.googleCallback
+);
+
+router.get("/login-failed", (req, res) => {
+  res.status(401).json({ success: false, message: "Login con Google fallido" });
+});
 
 module.exports = router;
